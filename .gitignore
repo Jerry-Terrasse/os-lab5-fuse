@@ -2,6 +2,3 @@ driver/
 .cache/
 build/
 .vscode/
-
-# ignore task2 temporarily
-fs/newfs/
