@@ -88,6 +88,7 @@ newfs_inode* newfs_alloc_inode(newfs_dentry *den)
             memset(inode, 0, sizeof(newfs_inode));
             inode->ino = i;
             inode->dentry = den;
+            den->inode = inode;
             return inode;
         }
     }
@@ -148,6 +149,7 @@ newfs_inode* newfs_read_inode(int ino, newfs_dentry *den)
     inode->ftype = inode_d.ftype;
     memcpy(inode->direct, inode_d.direct, sizeof(inode->direct));
     inode->dentry = den;
+    den->inode = inode;
 
     if(inode->ftype == DIR) {
         load_dentrys(inode);
@@ -261,4 +263,28 @@ newfs_dentry* newfs_make_dentry(const char* name, FILE_TYPE ftype)
     den->ftype = ftype;
     den->next = den->parent = NULL;
     return den;
+}
+
+newfs_dentry* newfs_lookup(const char *path, newfs_dentry *from)
+{
+    NEWFS_DEBUG("lookup %s from %s\n", path, from->name);
+    if(path[0] == '/') {
+        return newfs_lookup(path + 1, super.root->dentry);
+    }
+    if(strcmp(path, "") == 0) {
+        return from;
+    }
+
+    char buffer[MAX_NAME_LEN];
+    const char *p=path;
+    for(; *p && *p!='/'; ++p);
+    safe_strcpy(buffer, path, p - path + 1);
+    if(*p == '/') ++p;
+
+    for(newfs_dentry *den = from->inode->dentrys; den; den = den->next) {
+        if(strcmp(den->name, buffer) == 0) {
+            return newfs_lookup(p, den);
+        }
+    }
+    return NULL;
 }

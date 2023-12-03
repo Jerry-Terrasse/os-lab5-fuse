@@ -67,4 +67,6 @@ int    		       newfs_free_block(int);
 
 newfs_dentry*      newfs_make_dentry(const char*, FILE_TYPE);
 
+newfs_dentry*      newfs_lookup(const char*, newfs_dentry*);
+
 #endif  /* _newfs_H_ */

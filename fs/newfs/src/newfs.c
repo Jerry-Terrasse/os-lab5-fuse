@@ -153,7 +153,34 @@ int newfs_mkdir(const char* path, mode_t mode) {
  * @return int 0成功，否则失败
  */
 int newfs_getattr(const char* path, struct stat * newfs_stat) {
-	/* TODO: 解析路径，获取Inode，填充newfs_stat，可参考/fs/simplefs/sfs.c的sfs_getattr()函数实现 */
+	newfs_dentry *t = newfs_lookup(path, super.root->dentry);
+	if(t == NULL) {
+		return -ENOENT;
+	}
+
+	if(t->inode == NULL) {
+		t->inode = newfs_read_inode(t->ino, t);
+		assert(t->inode);
+	}
+
+	if(t->ftype == DIR) {
+		newfs_stat->st_mode = S_IFDIR | 0777;
+	} else {
+		newfs_stat->st_mode = S_IFREG | 0777;
+	}
+
+	if(t == super.root->dentry) {
+		newfs_stat->st_nlink = 2;
+	} else {
+		newfs_stat->st_nlink = 1;
+	}
+
+	newfs_stat->st_uid = getuid();
+	newfs_stat->st_gid = getgid();
+	newfs_stat->st_blksize = super.sz_block;
+	newfs_stat->st_blocks = (t->inode->size + super.sz_block - 1) / super.sz_block;
+	newfs_stat->st_atime = time(NULL);
+	newfs_stat->st_mtime = time(NULL);
 	return 0;
 }
 
