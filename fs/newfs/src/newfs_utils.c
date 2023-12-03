@@ -111,6 +111,7 @@ static int load_dentrys(newfs_inode *inode)
 {
     assert(inode);
     assert(inode->dentrys == NULL);
+    assert(inode->ftype == DIR);
     
     int cnt = inode->size / sizeof(newfs_dentry);
     for(int i=0; i<MAX_IDX_NUM; ++i) {
@@ -142,6 +143,21 @@ static int load_dentrys(newfs_inode *inode)
     return 0;
 }
 
+static int load_data(newfs_inode *inode)
+{
+    assert(inode);
+    assert(inode->data[0] == NULL);
+    assert(inode->ftype == REG);
+
+    int cnt = (inode->size + super.sz_block - 1) / super.sz_block;
+    for(int i=0; i<cnt; ++i) {
+        assert(inode->direct[i] > 0);
+        inode->data[i] = malloc(super.sz_block);
+        assert(newfs_driver_read(inode->direct[i], inode->data[i]) == 0);
+    }
+    return 0;
+}
+
 newfs_inode* newfs_read_inode(int ino, newfs_dentry *den)
 {
     int blkno = super.ino_off + ino / super.ino_per_block;
@@ -165,6 +181,8 @@ newfs_inode* newfs_read_inode(int ino, newfs_dentry *den)
 
     if(inode->ftype == DIR) {
         load_dentrys(inode);
+    } else {
+        load_data(inode);
     }
     return inode;
 }
@@ -210,7 +228,22 @@ int newfs_sync_inode(newfs_inode *u)
         }
         free(buf);
     } else {
-        assert(u->size == 0); // normal file is not implemented
+        int capacity = 0;
+        for(;capacity < MAX_IDX_NUM && u->data[capacity]; ++capacity);
+        int need = (u->size + super.sz_block - 1) / super.sz_block;
+
+        for(; capacity < need; ++capacity) {
+            u->direct[capacity] = newfs_alloc_block();
+            assert(u->direct[capacity] > 0);
+        }
+        for(; capacity > need; --capacity) {
+            newfs_free_block(u->direct[capacity - 1]);
+            u->direct[capacity - 1] = 0;
+        }
+
+        for(int i=0; i<capacity; ++i) {
+            assert(newfs_driver_write(u->direct[i], u->data[i]) == 0);
+        }
     }
 
     newfs_inode_d d;
@@ -228,7 +261,12 @@ int newfs_sync_inode(newfs_inode *u)
 int newfs_unmap_inode(newfs_inode *u)
 {
     if(u->ftype == REG) {
-        assert(u->size == 0); // normal file is not implemented
+        for(int i=0; i<MAX_IDX_NUM && u->data[i]; ++i) {
+            if(u->data[i]) {
+                free(u->data[i]);
+                u->data[i] = NULL;
+            }
+        }
         free(u);
         return 0;
     }

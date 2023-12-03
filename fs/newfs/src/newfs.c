@@ -29,10 +29,10 @@ static struct fuse_operations operations = {
 	.getattr = newfs_getattr,				 /* 获取文件属性，类似stat，必须完成 */
 	.readdir = newfs_readdir,				 /* 填充dentrys */
 	.mknod = newfs_mknod,					 /* 创建文件，touch相关 */
-	.write = NULL,								  	 /* 写入文件 */
-	.read = NULL,								  	 /* 读文件 */
+	.write = newfs_write,								  	 /* 写入文件 */
+	.read = newfs_read,								  	 /* 读文件 */
 	.utimens = newfs_utimens,				 /* 修改时间，忽略，避免touch报错 */
-	.truncate = NULL,						  		 /* 改变文件大小 */
+	.truncate = newfs_truncate,						  		 /* 改变文件大小 */
 	.unlink = NULL,							  		 /* 删除文件 */
 	.rmdir	= NULL,							  		 /* 删除目录， rm -r */
 	.rename = NULL,							  		 /* 重命名，mv */
@@ -216,6 +216,7 @@ int newfs_getattr(const char* path, struct stat * newfs_stat) {
 		newfs_stat->st_nlink = 1;
 	}
 
+	newfs_stat->st_size = t->inode->size;
 	newfs_stat->st_uid = getuid();
 	newfs_stat->st_gid = getgid();
 	newfs_stat->st_blksize = super.sz_block;
@@ -341,7 +342,41 @@ int newfs_utimens(const char* path, const struct timespec tv[2]) {
  */
 int newfs_write(const char* path, const char* buf, size_t size, off_t offset,
 		        struct fuse_file_info* fi) {
-	/* 选做 */
+	if(size == 0) {
+		return 0;
+	}
+	newfs_dentry *t = newfs_lookup(path, super.root->dentry, false);
+	if(t == NULL) {
+		return -ENOENT;
+	}
+	if(t->ftype != REG) {
+		return -EISDIR;
+	}
+	if(t->inode == NULL) {
+		t->inode = newfs_read_inode(t->ino, t);
+		assert(t->inode);
+	}
+
+	int newsize = t->inode->size;
+	newsize = newsize > offset + size ? newsize : offset + size;
+	newfs_truncate(path, newsize);
+
+	int cnt = 0; // bytes written
+	for(int i=0; i<MAX_IDX_NUM; ++i) {
+		int p1 = super.sz_block * i, p2 = super.sz_block * (i+1);
+		if(offset + size <= p1) {
+			break;
+		}
+		assert(t->inode->data[i]);
+		if(offset >= p2) {
+			continue;
+		}
+		int begin = offset > p1 ? offset : p1;
+		int end = offset + size < p2 ? offset + size : p2;
+		memcpy(t->inode->data[i] + begin - p1, buf + cnt, end - begin);
+		cnt += end - begin;
+		NEWFS_DEBUG("MEMCPY %d %d %d %d\n", i, begin, end, end-begin);
+	}
 	return size;
 }
 
@@ -357,8 +392,48 @@ int newfs_write(const char* path, const char* buf, size_t size, off_t offset,
  */
 int newfs_read(const char* path, char* buf, size_t size, off_t offset,
 		       struct fuse_file_info* fi) {
-	/* 选做 */
-	return size;			   
+	if(size == 0) {
+		return 0;
+	}
+	newfs_dentry *t = newfs_lookup(path, super.root->dentry, false);
+	if(t == NULL) {
+		return -ENOENT;
+	}
+	if(t->ftype != REG) {
+		return -EISDIR;
+	}
+	if(t->inode == NULL) {
+		t->inode = newfs_read_inode(t->ino, t);
+		assert(t->inode);
+	}
+	NEWFS_DEBUG("file %s size %d\n", path, t->inode->size);
+	if(offset + size > t->inode->size) {
+		size = t->inode->size - offset;
+	}
+	if(size == 0) {
+		return 0;
+	}
+
+	int cnt = 0; // bytes read
+	for(int i=0; i<MAX_IDX_NUM; ++i) {
+		int p1 = super.sz_block * i, p2 = super.sz_block * (i+1);
+		if(offset + size <= p1) {
+			break;
+		}
+		if(t->inode->data[i] == NULL) {
+			NEWFS_DEBUG("warning: read empty data block %d\n", i);
+			continue;
+		}
+		if(offset >= p2) {
+			continue;
+		}
+		int begin = offset > p1 ? offset : p1;
+		int end = offset + size < p2 ? offset + size : p2;
+		memcpy(buf + cnt, t->inode->data[i] + begin - p1, end - begin);
+		cnt += end - begin;
+		NEWFS_DEBUG("MEMCPY %d %d %d %d\n", i, begin, end, end-begin);
+	}
+	return size;
 }
 
 /**
@@ -434,7 +509,29 @@ int newfs_opendir(const char* path, struct fuse_file_info* fi) {
  * @return int 0成功，否则失败
  */
 int newfs_truncate(const char* path, off_t offset) {
-	/* 选做 */
+	newfs_dentry *t = newfs_lookup(path, super.root->dentry, false);
+	if(t == NULL) {
+		return -ENOENT;
+	}
+	if(t->ftype != REG) {
+		return -EISDIR;
+	}
+	if(t->inode == NULL) {
+		t->inode = newfs_read_inode(t->ino, t);
+		assert(t->inode);
+	}
+
+	int cnt = (t->inode->size + super.sz_block - 1) / super.sz_block;
+	int new_cnt = (offset + super.sz_block - 1) / super.sz_block;
+	for(int i=new_cnt; i<cnt; ++i) {
+		free(t->inode->data[i]); t->inode->data[i] = NULL;
+	}
+	for(int i=cnt; i<new_cnt; ++i) {
+		t->inode->data[i] = malloc(super.sz_block);
+		assert(t->inode->data[i]);
+	}
+	t->inode->size = offset;
+	NEWFS_DEBUG("truncate %s to %d\n", path, offset);
 	return 0;
 }
 
