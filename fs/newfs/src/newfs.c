@@ -235,8 +235,30 @@ int newfs_getattr(const char* path, struct stat * newfs_stat) {
  */
 int newfs_readdir(const char * path, void * buf, fuse_fill_dir_t filler, off_t offset,
 			    		 struct fuse_file_info * fi) {
-    /* TODO: 解析路径，获取目录的Inode，并读取目录项，利用filler填充到buf，可参考/fs/simplefs/sfs.c的sfs_readdir()函数实现 */
-    return 0;
+	newfs_dentry *t = newfs_lookup(path, super.root->dentry, false);
+	if(t == NULL) {
+		return -ENOENT;
+	}
+	if(t->ftype != DIR) {
+		return -ENOTDIR;
+	}
+	if(t->inode == NULL) {
+		t->inode = newfs_read_inode(t->ino, t);
+		assert(t->inode);
+	}
+
+	newfs_dentry *d = t->inode->dentrys;
+	for(int i=0; i<offset && d; d=d->next, ++i) {
+		NEWFS_DEBUG("skip %d %s\n", i, d->name);
+	}
+
+	for(int i=offset; d; d=d->next, ++i) {
+		NEWFS_DEBUG("fill %d %s\n", i, d->name);
+		if(filler(buf, d->name, NULL, i+1) != 0) {
+			return 0; // buffer full
+		}
+	}
+    return 0; // all  done
 }
 
 /**
