@@ -77,6 +77,17 @@ void newfs_clear_bit(uint8_t* map, int bit) {
     map[bit / 8] &= ~(1 << (bit & 0x7));
 }
 
+void newfs_extract_stem(const char *path, char *stem)
+{
+    const char *p = path + strlen(path) - 1;
+    if(p < path) {
+        safe_strcpy(stem, "", 1);
+        return;
+    }
+    for(; p >= path && *p != '/'; --p);
+    safe_strcpy(stem, p + 1, MAX_NAME_LEN);
+}
+
 newfs_inode* newfs_alloc_inode(newfs_dentry *den)
 {
     assert(super.is_mounted);
@@ -265,13 +276,14 @@ newfs_dentry* newfs_make_dentry(const char* name, FILE_TYPE ftype)
     return den;
 }
 
-newfs_dentry* newfs_lookup(const char *path, newfs_dentry *from)
+newfs_dentry* newfs_lookup(const char *path, newfs_dentry *from, bool remain_leaf)
 {
     NEWFS_DEBUG("lookup %s from %s\n", path, from->name);
     if(path[0] == '/') {
-        return newfs_lookup(path + 1, super.root->dentry);
+        return newfs_lookup(path + 1, super.root->dentry, remain_leaf);
     }
     if(strcmp(path, "") == 0) {
+        assert(!remain_leaf);
         return from;
     }
 
@@ -279,11 +291,17 @@ newfs_dentry* newfs_lookup(const char *path, newfs_dentry *from)
     const char *p=path;
     for(; *p && *p!='/'; ++p);
     safe_strcpy(buffer, path, p - path + 1);
-    if(*p == '/') ++p;
+    if(*p == '/') {
+        ++p;
+    } else { // reach the end
+        if(remain_leaf) {
+            return from;
+        }
+    }
 
     for(newfs_dentry *den = from->inode->dentrys; den; den = den->next) {
         if(strcmp(den->name, buffer) == 0) {
-            return newfs_lookup(p, den);
+            return newfs_lookup(p, den, remain_leaf);
         }
     }
     return NULL;

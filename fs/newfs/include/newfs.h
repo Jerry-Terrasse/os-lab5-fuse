@@ -57,6 +57,8 @@ bool               newfs_test_bit(uint8_t*, int);
 void               newfs_set_bit(uint8_t*, int);
 void               newfs_clear_bit(uint8_t*, int);
 
+void               newfs_extract_stem(const char*, char*);
+
 newfs_inode*	   newfs_alloc_inode(newfs_dentry*);
 newfs_inode*       newfs_read_inode(int, newfs_dentry*);
 int 			   newfs_sync_inode(newfs_inode*);
@@ -67,6 +69,6 @@ int    		       newfs_free_block(int);
 
 newfs_dentry*      newfs_make_dentry(const char*, FILE_TYPE);
 
-newfs_dentry*      newfs_lookup(const char*, newfs_dentry*);
+newfs_dentry*      newfs_lookup(const char*, newfs_dentry*, bool);
 
 #endif  /* _newfs_H_ */

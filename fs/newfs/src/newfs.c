@@ -141,7 +141,38 @@ void newfs_destroy(void* p)
  * @return int 0成功，否则失败
  */
 int newfs_mkdir(const char* path, mode_t mode) {
-	/* TODO: 解析路径，创建目录 */
+	newfs_dentry *t = newfs_lookup(path, super.root->dentry, true);
+	if(t == NULL) {
+		return -ENOENT;
+	}
+	if(t->ftype != DIR) {
+		return -ENOTDIR;
+	}
+	if(t->inode == NULL) {
+		t->inode = newfs_read_inode(t->ino, t);
+		assert(t->inode);
+	}
+
+	char name[MAX_NAME_LEN];
+	newfs_extract_stem(path, name);
+	if(strcmp(name, "") == 0) {
+		return -EEXIST;
+	}
+	for(newfs_dentry *d=t->inode->dentrys; d; d=d->next) {
+		if(strcmp(d->name, name) == 0) {
+			return -EEXIST;
+		}
+	}
+
+	newfs_dentry *den = newfs_make_dentry(name, DIR);
+	den->inode = newfs_alloc_inode(den);
+	den->ino = den->inode->ino;
+	NEWFS_DEBUG("mkdir %s using inode %d\n", den->name, den->ino);
+
+	t->inode->size += sizeof(newfs_dentry_d);
+	den->parent = t;
+	den->next = t->inode->dentrys;
+	t->inode->dentrys = den;
 	return 0;
 }
 
@@ -153,7 +184,7 @@ int newfs_mkdir(const char* path, mode_t mode) {
  * @return int 0成功，否则失败
  */
 int newfs_getattr(const char* path, struct stat * newfs_stat) {
-	newfs_dentry *t = newfs_lookup(path, super.root->dentry);
+	newfs_dentry *t = newfs_lookup(path, super.root->dentry, false);
 	if(t == NULL) {
 		return -ENOENT;
 	}
@@ -217,7 +248,38 @@ int newfs_readdir(const char * path, void * buf, fuse_fill_dir_t filler, off_t o
  * @return int 0成功，否则失败
  */
 int newfs_mknod(const char* path, mode_t mode, dev_t dev) {
-	/* TODO: 解析路径，并创建相应的文件 */
+	newfs_dentry *t = newfs_lookup(path, super.root->dentry, true);
+	if(t == NULL) {
+		return -ENOENT;
+	}
+	if(t->ftype != DIR) {
+		return -ENOTDIR;
+	}
+	if(t->inode == NULL) {
+		t->inode = newfs_read_inode(t->ino, t);
+		assert(t->inode);
+	}
+
+	char name[MAX_NAME_LEN];
+	newfs_extract_stem(path, name);
+	if(strcmp(name, "") == 0) {
+		return -EEXIST;
+	}
+	for(newfs_dentry *d=t->inode->dentrys; d; d=d->next) {
+		if(strcmp(d->name, name) == 0) {
+			return -EEXIST;
+		}
+	}
+
+	newfs_dentry *den = newfs_make_dentry(name, REG);
+	den->inode = newfs_alloc_inode(den);
+	den->ino = den->inode->ino;
+	NEWFS_DEBUG("mknod %s using inode %d\n", den->name, den->ino);
+
+	t->inode->size += sizeof(newfs_dentry_d);
+	den->parent = t;
+	den->next = t->inode->dentrys;
+	t->inode->dentrys = den;
 	return 0;
 }
 
