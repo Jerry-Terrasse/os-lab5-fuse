@@ -73,6 +73,7 @@ void* newfs_init(struct fuse_conn_info * conn_info)
 	newfs_dentry *root_dentry = newfs_make_dentry("/", DIR);
 	if(super.magic != NEWFS_MAGIC) {
 		// build
+		NEWFS_DEBUG("building newfs\n");
 		super.magic = NEWFS_MAGIC;
 
 		super.sz_block = super.sz_io * super.io_per_block;
@@ -89,6 +90,7 @@ void* newfs_init(struct fuse_conn_info * conn_info)
 		super.den_per_block = super.sz_block / sizeof(struct newfs_dentry_d);
 		super.ino_num = super.ino_per_block * super.ino_blks;
 
+
 		super.data_off = super.ino_off + super.ino_blks;
 		super.data_blks = super.tot_block - super.data_off;
 
@@ -97,14 +99,22 @@ void* newfs_init(struct fuse_conn_info * conn_info)
 
 		// allocate root
 		assert(super.root = newfs_alloc_inode(root_dentry));
+		super.root->size = 0; super.root->link = 1; super.root->ftype = DIR;
+		super.root->dentry = root_dentry;
+
 		super.root_ino = super.root->ino;
 		assert(newfs_sync_inode(super.root) == 0);
 	} else {
+		// load
+		NEWFS_DEBUG("loading existing newfs\n");
 		assert(newfs_driver_read(super.imap_off, super.imap) == 0);
 		assert(newfs_driver_read(super.dmap_off, super.dmap) == 0);
 
 		assert(super.root = newfs_read_inode(super.root_ino, root_dentry));
 	}
+
+	NEWFS_DEBUG("imap_blks %d, dmap_blks %d, ino_blks %d\n", super.imap_blks, super.dmap_blks, super.ino_blks);
+	NEWFS_DEBUG("root_ino %d\n", super.root_ino);
 	return NULL;
 }
 

@@ -93,6 +93,7 @@ newfs_inode* newfs_alloc_inode(newfs_dentry *den)
     assert(super.is_mounted);
     for(int i = 0; i < super.ino_num; i++) {
         if(!newfs_test_bit(super.imap, i)) {
+            NEWFS_DEBUG("alloc inode %d for %s\n", i, den->name);
             newfs_set_bit(super.imap, i);
             newfs_inode *inode = malloc(sizeof(newfs_inode));
             assert(inode);
@@ -170,10 +171,7 @@ newfs_inode* newfs_read_inode(int ino, newfs_dentry *den)
 
 int newfs_sync_inode(newfs_inode *u)
 {
-    newfs_inode_d d;
-    d.ino = u->ino; d.size = u->size; d.link = u->link; d.ftype = u->ftype;
-    memcpy(d.direct, u->direct, sizeof(d.direct));
-
+    NEWFS_DEBUG("sync inode %d, named %s\n", u->ino, u->dentry->name);
     if(u->ftype == DIR) {
         // write sub-nodes to disk
         newfs_dentry *v = u->dentrys;
@@ -215,6 +213,10 @@ int newfs_sync_inode(newfs_inode *u)
         assert(u->size == 0); // normal file is not implemented
     }
 
+    newfs_inode_d d;
+    d.ino = u->ino; d.size = u->size; d.link = u->link; d.ftype = u->ftype;
+    memcpy(d.direct, u->direct, sizeof(d.direct));
+
     // write `d` to disk
     int blkno = super.ino_off + d.ino / super.ino_per_block;
     int offset = (d.ino % super.ino_per_block) * sizeof(newfs_inode_d);
@@ -250,8 +252,9 @@ int newfs_alloc_block(void)
     assert(super.is_mounted);
     for(int i = 0; i < super.data_blks; i++) {
         if(!newfs_test_bit(super.dmap, i)) {
+            NEWFS_DEBUG("alloc block %d\n", i);
             newfs_set_bit(super.dmap, i);
-            return i;
+            return super.data_off + i;
         }
     }
     return -1;
