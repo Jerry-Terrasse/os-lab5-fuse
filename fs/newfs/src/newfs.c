@@ -1,3 +1,5 @@
+#include "types.h"
+#include <stdint.h>
 #define _XOPEN_SOURCE 700
 
 #include "newfs.h"
@@ -48,12 +50,61 @@ static struct fuse_operations operations = {
  * @param conn_info 可忽略，一些建立连接相关的信息 
  * @return void*
  */
-void* newfs_init(struct fuse_conn_info * conn_info) {
-	/* TODO: 在这里进行挂载 */
+void* newfs_init(struct fuse_conn_info * conn_info)
+{
+	int fd = ddriver_open((char*)newfs_options.device);
+	assert(fd > 0);
 
-	/* 下面是一个控制设备的示例 */
-	super.fd = ddriver_open(newfs_options.device);
-	
+	int sz_io=0, sz_disk=0, io_per_block=2;
+	assert(ddriver_ioctl(fd, IOC_REQ_DEVICE_IO_SZ, &sz_io) == 0);
+    assert(ddriver_ioctl(fd, IOC_REQ_DEVICE_SIZE, &sz_disk) == 0);
+
+	super.fd = fd; super.sz_io = sz_io; super.sz_disk = sz_disk;
+	super.io_per_block = io_per_block; super.sz_block = sz_io * io_per_block;
+	assert(newfs_driver_read_range(0, &super, 0, sizeof(super)) == 0);
+
+	super.fd = fd; super.sz_io = sz_io; super.sz_disk = sz_disk;
+	super.io_per_block = io_per_block; super.sz_block = sz_io * io_per_block;
+
+	assert(super.imap = malloc(super.sz_block));
+	assert(super.dmap = malloc(super.sz_block));
+	super.is_mounted = true;
+
+	newfs_dentry *root_dentry = newfs_make_dentry("/", DIR);
+	if(super.magic != NEWFS_MAGIC) {
+		// build
+		super.magic = NEWFS_MAGIC;
+
+		super.sz_block = super.sz_io * super.io_per_block;
+		super.tot_block = super.sz_disk / super.sz_block;
+
+		super.imap_off = 1;
+		super.imap_blks = 1;
+		super.dmap_off = super.imap_off + super.imap_blks;
+		super.dmap_blks = 1;
+		
+		super.ino_off = super.dmap_off + super.dmap_blks;
+		super.ino_per_block = super.sz_block / sizeof(struct newfs_inode_d);
+		super.ino_blks = (super.tot_block + super.ino_per_block - 1) / super.ino_per_block;
+		super.den_per_block = super.sz_block / sizeof(struct newfs_dentry_d);
+		super.ino_num = super.ino_per_block * super.ino_blks;
+
+		super.data_off = super.ino_off + super.ino_blks;
+		super.data_blks = super.tot_block - super.data_off;
+
+		memset(super.imap, 0, super.sz_block);
+		memset(super.dmap, 0, super.sz_block);
+
+		// allocate root
+		assert(super.root = newfs_alloc_inode(root_dentry));
+		super.root_ino = super.root->ino;
+		assert(newfs_sync_inode(super.root) == 0);
+	} else {
+		assert(newfs_driver_read(super.imap_off, super.imap) == 0);
+		assert(newfs_driver_read(super.dmap_off, super.dmap) == 0);
+
+		assert(super.root = newfs_read_inode(super.root_ino, root_dentry));
+	}
 	return NULL;
 }
 
@@ -63,11 +114,22 @@ void* newfs_init(struct fuse_conn_info * conn_info) {
  * @param p 可忽略
  * @return void
  */
-void newfs_destroy(void* p) {
-	/* TODO: 在这里进行卸载 */
-	
-	ddriver_close(super.fd);
+void newfs_destroy(void* p)
+{
+	assert(super.is_mounted);
 
+	assert(newfs_sync_inode(super.root) == 0);
+	assert(newfs_unmap_inode(super.root) == 0); super.root = NULL;
+
+	assert(newfs_driver_write(super.imap_off, super.imap) == 0);
+	free(super.imap); super.imap = NULL;
+	assert(newfs_driver_write(super.dmap_off, super.dmap) == 0);
+	free(super.dmap); super.dmap = NULL;
+
+	super.is_mounted = false;
+	assert(newfs_driver_write_range(0, &super, 0, sizeof(super)) == 0);
+
+	ddriver_close(super.fd);
 	return;
 }
 
@@ -280,7 +342,7 @@ int main(int argc, char **argv)
     int ret;
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
-	newfs_options.device = strdup("TODO: 这里填写你的ddriver设备路径");
+	newfs_options.device = strdup("/home/students/210110607/ddriver");
 
 	if (fuse_opt_parse(&args, &newfs_options, option_spec, NULL) == -1)
 		return -1;
