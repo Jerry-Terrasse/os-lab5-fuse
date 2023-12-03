@@ -142,7 +142,7 @@ function log() {
 }
 
 function dump(){
-    sudo rm "$ORIGIN_WORK_DIR"/ddriver_dump>/dev/null 2>&1 
+    rm "$ORIGIN_WORK_DIR"/ddriver_dump>/dev/null 2>&1 
     if [ "$DDRIVER_TYPE" == "k" ]; then  
         echo "目标设备 $KERNEL_DEV_PATH"
         sudo dd if=$KERNEL_DEV_PATH of="$ORIGIN_WORK_DIR"/ddriver_dump bs=$CONFIG_BLOCK_SZ count=$BLOCK_COUNT
