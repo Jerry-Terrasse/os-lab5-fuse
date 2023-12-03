@@ -229,7 +229,7 @@ int newfs_sync_inode(newfs_inode *u)
         free(buf);
     } else {
         int capacity = 0;
-        for(;capacity < MAX_IDX_NUM && u->data[capacity]; ++capacity);
+        for(;capacity < MAX_IDX_NUM && u->direct[capacity]; ++capacity);
         int need = (u->size + super.sz_block - 1) / super.sz_block;
 
         for(; capacity < need; ++capacity) {
@@ -295,7 +295,7 @@ int newfs_alloc_block(void)
             return super.data_off + i;
         }
     }
-    return -1;
+    return 0;
 }
 
 int newfs_free_block(int blkno)

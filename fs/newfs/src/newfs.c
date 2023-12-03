@@ -114,7 +114,6 @@ void* newfs_init(struct fuse_conn_info * conn_info)
 	}
 
 	NEWFS_DEBUG("imap_blks %d, dmap_blks %d, ino_blks %d\n", super.imap_blks, super.dmap_blks, super.ino_blks);
-	NEWFS_DEBUG("root_ino %d\n", super.root_ino);
 	return NULL;
 }
 
@@ -264,7 +263,6 @@ int newfs_readdir(const char * path, void * buf, fuse_fill_dir_t filler, off_t o
 	}
 
 	for(int i=offset; d; d=d->next, ++i) {
-		NEWFS_DEBUG("fill %d %s\n", i, d->name);
 		if(filler(buf, d->name, NULL, i+1) != 0) {
 			return 0; // buffer full
 		}
@@ -375,7 +373,6 @@ int newfs_write(const char* path, const char* buf, size_t size, off_t offset,
 		int end = offset + size < p2 ? offset + size : p2;
 		memcpy(t->inode->data[i] + begin - p1, buf + cnt, end - begin);
 		cnt += end - begin;
-		NEWFS_DEBUG("MEMCPY %d %d %d %d\n", i, begin, end, end-begin);
 	}
 	return size;
 }
@@ -431,7 +428,6 @@ int newfs_read(const char* path, char* buf, size_t size, off_t offset,
 		int end = offset + size < p2 ? offset + size : p2;
 		memcpy(buf + cnt, t->inode->data[i] + begin - p1, end - begin);
 		cnt += end - begin;
-		NEWFS_DEBUG("MEMCPY %d %d %d %d\n", i, begin, end, end-begin);
 	}
 	return size;
 }
@@ -531,7 +527,6 @@ int newfs_truncate(const char* path, off_t offset) {
 		assert(t->inode->data[i]);
 	}
 	t->inode->size = offset;
-	NEWFS_DEBUG("truncate %s to %d\n", path, offset);
 	return 0;
 }
 
